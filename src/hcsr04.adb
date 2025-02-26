@@ -1,12 +1,12 @@
-with Screen_Draw;
+with Hcsr04;
 with STM32.Device; use STM32.Device;
 with STM32.GPIO; use STM32.GPIO;
 with STM32.Timers; use STM32.Timers;
 with STM32; use STM32;
 with HAL; use HAL;
 with System;
+with Orchestration;
 
-with STM32.EXTI;
 
 with Ada.Interrupts.Names;
 
@@ -14,7 +14,7 @@ package body Hcsr04 is
 
    Trig_Pin : GPIO_Point renames PA5;
 
-   Echo_Pin   : GPIO_Point renames PA5;
+   Echo_Pin   : GPIO_Point renames PA6;
    Echo_Timer : Timer renames Timer_2;
    Echo_AF    : constant GPIO_Alternate_Function := GPIO_AF_TIM2_1;
 
@@ -34,14 +34,15 @@ package body Hcsr04 is
       function Get_Width return UInt32 is
          (Current_Width);
    end Pulse_Width;
-   
+
    Measured_Width : Pulse_Width;
 
    protected Echo_Interrupt_Handler is
       pragma Interrupt_Priority (System.Interrupt_Priority'First);
    private
       procedure Handle_Interrupt;
-      pragma Attach_Handler (Handle_Interrupt, Ada.Interrupts.Names.TIM2_Interrupt); 
+      pragma Attach_Handler (Handle_Interrupt,
+         Ada.Interrupts.Names.TIM2_Interrupt); 
    end Echo_Interrupt_Handler;
 
    protected body Echo_Interrupt_Handler is
@@ -100,7 +101,7 @@ package body Hcsr04 is
       Enable_Interrupt (Echo_Timer, Timer_CC2_Interrupt);
 
       Enable (Echo_Timer);
-   end;
+   end Configure_Echo_Pin;
 
    procedure Configure_Trigger_Pin (This : GPIO_Point) is
       Config : GPIO_Port_Configuration;
@@ -129,6 +130,31 @@ package body Hcsr04 is
       end loop;
    end Trigger;
 
+   -- Rajouter la task echo par Karamoko
+   task body Echo is 
+      Next_Release : Time;
+      Period : constant Time_Span := Seconds (1);
+      Echo_Bool : Boolean := False;
+   begin
+      -- Configure_Echo_Pin (Echo_Pin, Echo_Timer, Echo_AF);
+      -- Configure_Trigger_Pin (Trig_Pin);
+      loop
+         Next_Release := Clock + Period;
+         -- Echo_Bool := STM32.GPIO.Set (Echo_Pin); -- echo == 1
+         --  if Echo_Bool then
+         --     Orchestration.Trigger_Instant.Wait;
+         --     Echo_Timer.Enable_Interrupt (Timer_CC1_Interrupt);
+         --     Echo_Timer.Disable_Interrupt (Timer_CC2_Interrupt);
+         --     if Echo_Bool /= STM32.GPIO.Set (Echo_Pin) then
+         --        Echo_Timer.Enable_Interrupt (Timer_CC2_Interrupt);
+         --        Echo_Timer.Disable_Interrupt (Timer_CC1_Interrupt);
+         --        Orchestration.Trigger_Instant.Signal;
+         --     end if;
+         --  end if;
+         delay until Next_Release;
+      end loop;
+   end Echo;
+
 
    function Get_Distance return Cms_T is
       Width : UInt32 := Measured_Width.Get_Width;
@@ -136,5 +162,22 @@ package body Hcsr04 is
    begin
       return Cms_T (Cms);
    end Get_Distance;
+
+
+
+   -- Rajout du body de la fonction Create par Karamoko
+   --Probleme avec cyclic_duration que j'ai du mettre en Integer pour respecter Hcsr04_T CD à la place de fixed_t
+   function Create (Mode: Mode_T := Cyclic; Cycle_Freq : Cyclic_Duration_T := 100000; Trigger_Dur : Trigger_Duration_T := 10) return Hcsr04_T is
+   New_Hcsr04 : Hcsr04_T;
+   begin
+      -- Initialisation des paramètres de New_Hcsr04
+      New_Hcsr04.M := Mode;
+      New_Hcsr04.CD := Cycle_Freq;
+      New_Hcsr04.TD := Trigger_Dur;
+
+      -- Démarrage de la tâche Trigger
+      --New_Hcsr04.Trigger_Task := Trigger'Access;
+      return New_Hcsr04;
+   end Create;
 
 end Hcsr04;
